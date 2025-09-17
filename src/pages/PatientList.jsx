@@ -27,8 +27,8 @@ function PatientList() {
     setErrorArchivo('');
     try {
       const data = await file.arrayBuffer();
-  const workbook = XLSX.read(data, { type: 'array' });
-  setWorkbookOriginal(workbook);
+      const workbook = XLSX.read(data, { type: 'array' });
+      setWorkbookOriginal(workbook);
       const sheetPacientes = workbook.Sheets['Pacientes'] || workbook.Sheets[workbook.SheetNames[0]];
       const sheetOdo = workbook.Sheets['Odontogramas'];
       if (!sheetPacientes) {
@@ -37,6 +37,28 @@ function PatientList() {
         return;
       }
       const pacientes = XLSX.utils.sheet_to_json(sheetPacientes, { defval: '' });
+      // Validar columnas requeridas
+      const columnasRequeridas = ['ID', 'Nombre', 'Apellido', 'DNI'];
+      const columnasArchivo = Object.keys(pacientes[0] || {});
+      const faltantes = columnasRequeridas.filter(col => !columnasArchivo.includes(col));
+      if (faltantes.length > 0) {
+        setErrorArchivo('Faltan columnas requeridas en el Excel: ' + faltantes.join(', '));
+        setPacientes([]);
+        return;
+      }
+      // Validar IDs vacíos o duplicados
+      const ids = pacientes.map(p => p.ID);
+      if (ids.some(id => id === undefined || id === null || id === '')) {
+        setErrorArchivo('Hay filas con ID vacío. Todos los pacientes deben tener un ID único.');
+        setPacientes([]);
+        return;
+      }
+      const idsUnicos = new Set(ids);
+      if (idsUnicos.size !== ids.length) {
+        setErrorArchivo('Hay IDs duplicados en el Excel. Todos los pacientes deben tener un ID único.');
+        setPacientes([]);
+        return;
+      }
       let odontos = [];
       if (sheetOdo) {
         odontos = XLSX.utils.sheet_to_json(sheetOdo, { defval: '' });
@@ -50,14 +72,21 @@ function PatientList() {
     } catch (err) {
       setErrorArchivo('Error al leer el archivo: ' + err.message);
       setPacientes([]);
+      // Mostrar el error en consola para depuración
+      console.error('Error al procesar Excel:', err);
     }
   };
 
-  const pacientesFiltrados = pacientes.filter(p =>
-    (p.Nombre || '').toLowerCase().includes(busqueda.toLowerCase()) ||
-    (p.Apellido || '').toLowerCase().includes(busqueda.toLowerCase()) ||
-    (p.DNI || '').toString().includes(busqueda)
-  );
+  const pacientesFiltrados = pacientes.filter(p => {
+    const nombre = typeof p.Nombre === 'string' ? p.Nombre : (p.Nombre ? String(p.Nombre) : '');
+    const apellido = typeof p.Apellido === 'string' ? p.Apellido : (p.Apellido ? String(p.Apellido) : '');
+    const dni = p.DNI !== undefined && p.DNI !== null ? String(p.DNI) : '';
+    return (
+      nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+      apellido.toLowerCase().includes(busqueda.toLowerCase()) ||
+      dni.includes(busqueda)
+    );
+  });
 
   const handleEdit = (paciente) => {
     setEditData({ ...paciente });
