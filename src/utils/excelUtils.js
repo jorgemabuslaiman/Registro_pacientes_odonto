@@ -51,6 +51,19 @@ export function exportarPacientesAExcel(pacientes, workbookOriginal) {
   });
   const wsOdo = XLSX.utils.json_to_sheet(odos);
 
+  // Hoja de HistoriaClinica
+  let historia = [];
+  pacientes.forEach(p => {
+    (p.historialClinico || []).forEach(h => {
+      historia.push({
+        ID_Paciente: p.ID,
+        Fecha: h.fecha,
+        Texto: h.texto
+      });
+    });
+  });
+  const wsHistoria = XLSX.utils.json_to_sheet(historia);
+
   // Si se provee el workbook original, lo clonamos y reemplazamos solo las hojas necesarias
   let wb;
   if (workbookOriginal) {
@@ -60,11 +73,14 @@ export function exportarPacientesAExcel(pacientes, workbookOriginal) {
     XLSX.utils.book_append_sheet(wb, wsPacientes, 'Pacientes', true);
     // Reemplazar o agregar la hoja Odontogramas
     XLSX.utils.book_append_sheet(wb, wsOdo, 'Odontogramas', true);
+    // Reemplazar o agregar la hoja HistoriaClinica
+    XLSX.utils.book_append_sheet(wb, wsHistoria, 'HistoriaClinica', true);
   } else {
     // Si no hay workbook original, crear uno nuevo
     wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, wsPacientes, 'Pacientes');
     XLSX.utils.book_append_sheet(wb, wsOdo, 'Odontogramas');
+    XLSX.utils.book_append_sheet(wb, wsHistoria, 'HistoriaClinica');
   }
 
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

@@ -1,0 +1,106 @@
+.tooth-container {
+  position: relative;
+  text-align: center;
+}
+
+.tooth {
+  width: 50px;
+  height: 50px;
+  position: relative;
+  border: 1px solid black;
+  display: grid;
+  grid-template-areas:
+    "top top top"
+    "left center right"
+    "bottom bottom bottom";
+  grid-template-rows: 15% 70% 15%;
+  grid-template-columns: 15% 70% 15%;
+  transition: width 0.2s, height 0.2s;
+}
+
+@media (max-width: 600px) {
+  .tooth {
+    width: 32px;
+    height: 32px;
+  }
+  .tooth-number {
+    font-size: 9px;
+  }
+  .odontograma-container {
+    padding: 0 2px;
+  }
+  .tooth-row {
+    gap: 2px;
+    margin: 4px 0;
+  }
+  .color-popup {
+    font-size: 0.9em;
+    min-width: 90px;
+    padding: 3px;
+  }
+}
+
+@media (max-width: 400px) {
+  .tooth {
+    width: 22px;
+    height: 22px;
+  }
+  .tooth-number {
+    font-size: 7px;
+  }
+}
+
+.area {
+  border: 1px solid #ccc;
+}
+
+.area.top {
+  grid-area: top;
+}
+
+.area.bottom {
+  grid-area: bottom;
+}
+
+.area.left {
+  grid-area: left;
+}
+
+.area.right {
+  grid-area: right;
+}
+
+.area.center {
+  grid-area: center;
+}
+
+.tooth-number {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.color-popup {
+  position: fixed;
+  background: white;
+  border: 1px solid #ccc;
+  padding: 5px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-radius: 5px;
+}
+
+.odontograma-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tooth-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}

@@ -1,10 +1,8 @@
-
-
 import React, { useState } from 'react';
 import { Container, Table, Button, Form, Modal } from 'react-bootstrap';
 import { exportarPacientesAExcel } from '../utils/excelUtils';
 import * as XLSX from 'xlsx';
-import OdontogramaEditor from '../components/OdontogramaEditor';
+import Odontograma from '../components/Odontograma';
 
 function PatientList() {
   const [pacientes, setPacientes] = useState([]);
@@ -20,6 +18,31 @@ function PatientList() {
   const [editData, setEditData] = useState({});
   const [odoData, setOdoData] = useState({});
 
+  // Historia clínica
+  const [showHistoria, setShowHistoria] = useState(false);
+  const [historiaPaciente, setHistoriaPaciente] = useState(null);
+  const [nuevaIntervencion, setNuevaIntervencion] = useState('');
+  // Filtros para "Ver más"
+  const [filtroInicio, setFiltroInicio] = useState('');
+  const [filtroFin, setFiltroFin] = useState('');
+
+  // Agregar paciente nuevo (ID secuencial)
+  const handleAddPaciente = () => {
+    const maxID = pacientes.length > 0 ? Math.max(...pacientes.map(p => Number(p.ID) || 0)) : 0;
+    const nuevo = {
+      ID: maxID + 1,
+      Nombre: '',
+      Apellido: '',
+      DNI: '',
+      odontograma: {},
+      odontogramaExcel: [],
+      historialClinico: []
+    };
+    setPacientes([...pacientes, nuevo]);
+    setPacienteActual(nuevo);
+    setEditData(nuevo);
+    setShowEdit(true);
+  };
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -31,31 +54,27 @@ function PatientList() {
       setWorkbookOriginal(workbook);
       const sheetPacientes = workbook.Sheets['Pacientes'] || workbook.Sheets[workbook.SheetNames[0]];
       const sheetOdo = workbook.Sheets['Odontogramas'];
+      const sheetHistoria = workbook.Sheets['HistoriaClinica'];
       if (!sheetPacientes) {
         setErrorArchivo('No se encontró la hoja "Pacientes" en el archivo.');
         setPacientes([]);
         return;
       }
-      const pacientes = XLSX.utils.sheet_to_json(sheetPacientes, { defval: '' });
+      let pacientes = XLSX.utils.sheet_to_json(sheetPacientes, { defval: '' });
+      // IDs secuenciales al importar
+      pacientes = pacientes.map((p, idx) => ({
+        ...p,
+        ID: idx + 1,
+        odontograma: {},
+        odontogramaExcel: [],
+        historialClinico: []
+      }));
       // Validar columnas requeridas
       const columnasRequeridas = ['ID', 'Nombre', 'Apellido', 'DNI'];
       const columnasArchivo = Object.keys(pacientes[0] || {});
       const faltantes = columnasRequeridas.filter(col => !columnasArchivo.includes(col));
       if (faltantes.length > 0) {
         setErrorArchivo('Faltan columnas requeridas en el Excel: ' + faltantes.join(', '));
-        setPacientes([]);
-        return;
-      }
-      // Validar IDs vacíos o duplicados
-      const ids = pacientes.map(p => p.ID);
-      if (ids.some(id => id === undefined || id === null || id === '')) {
-        setErrorArchivo('Hay filas con ID vacío. Todos los pacientes deben tener un ID único.');
-        setPacientes([]);
-        return;
-      }
-      const idsUnicos = new Set(ids);
-      if (idsUnicos.size !== ids.length) {
-        setErrorArchivo('Hay IDs duplicados en el Excel. Todos los pacientes deben tener un ID único.');
         setPacientes([]);
         return;
       }
@@ -68,11 +87,22 @@ function PatientList() {
         const odo = odontos.filter(o => o.ID_Paciente == p.ID);
         return { ...p, odontogramaExcel: odo };
       });
-      setPacientes(pacientesConOdo);
+
+      // Leer historia clínica y asociar a cada paciente
+      let historia = [];
+      if (sheetHistoria) {
+        historia = XLSX.utils.sheet_to_json(sheetHistoria, { defval: '' });
+      }
+      const pacientesConHistoria = pacientesConOdo.map(p => ({
+        ...p,
+        historialClinico: historia
+          .filter(h => String(h.ID_Paciente) === String(p.ID))
+          .map(h => ({ fecha: h.Fecha, texto: h.Texto }))
+      }));
+      setPacientes(pacientesConHistoria);
     } catch (err) {
       setErrorArchivo('Error al leer el archivo: ' + err.message);
       setPacientes([]);
-      // Mostrar el error en consola para depuración
       console.error('Error al procesar Excel:', err);
     }
   };
@@ -106,7 +136,7 @@ function PatientList() {
 
   const handleEditSave = () => {
     setPacientes(pacientes.map(p =>
-      p === pacienteActual ? { ...editData } : p
+      p === pacienteActual ? { ...editData, odontograma: pacienteActual.odontograma || {}, historialClinico: pacienteActual.historialClinico || [] } : p
     ));
     setShowEdit(false);
   };
@@ -136,6 +166,8 @@ function PatientList() {
           }, {})
         : {}
     );
+    setFiltroInicio('');
+    setFiltroFin('');
     setShowDetalle(true);
   };
 
@@ -146,11 +178,37 @@ function PatientList() {
     setShowDetalle(false);
   };
 
+  // Historia clínica
+  const handleHistoriaClinica = (paciente) => {
+    setHistoriaPaciente(paciente);
+    setShowHistoria(true);
+    setNuevaIntervencion('');
+  };
+
+  const handleAgregarIntervencion = () => {
+    if (!nuevaIntervencion.trim()) return;
+    const fecha = new Date().toISOString().slice(0, 10);
+    const nueva = { fecha, texto: nuevaIntervencion };
+    const nuevosPacientes = pacientes.map(p =>
+      p === historiaPaciente
+        ? { ...p, historialClinico: [{ ...nueva }, ...(p.historialClinico || [])] }
+        : p
+    );
+    setPacientes(nuevosPacientes);
+    // Actualizar historiaPaciente con el paciente actualizado
+    const actualizado = nuevosPacientes.find(p => p === historiaPaciente || (p.ID && historiaPaciente && p.ID === historiaPaciente.ID));
+    if (actualizado) setHistoriaPaciente(actualizado);
+    setNuevaIntervencion('');
+  };
+
   return (
     <Container>
       {errorArchivo && <div style={{color:'red', marginBottom:10}}>{errorArchivo}</div>}
       <h2>Listado de Pacientes</h2>
-  <Button variant="success" className="mb-3" onClick={() => exportarPacientesAExcel(pacientes, workbookOriginal)} disabled={pacientes.length === 0}>
+      <Button variant="primary" className="mb-3" onClick={handleAddPaciente}>
+        Agregar Paciente
+      </Button>
+      <Button variant="success" className="mb-3" onClick={() => exportarPacientesAExcel(pacientes, workbookOriginal)} disabled={pacientes.length === 0}>
         Exportar a Excel
       </Button>
       <Form.Group className="mb-3">
@@ -190,7 +248,8 @@ function PatientList() {
               <td>
                 <Button size="sm" variant="secondary" onClick={() => handleVerMas(p)} className="me-2">Ver más</Button>
                 <Button size="sm" variant="primary" onClick={() => handleEdit(p)} className="me-2">Editar</Button>
-                <Button size="sm" variant="info" onClick={() => handleOdo(p)}>Odontograma</Button>
+                <Button size="sm" variant="info" onClick={() => handleOdo(p)} className="me-2">Odontograma</Button>
+                <Button size="sm" variant="warning" onClick={() => handleHistoriaClinica(p)}>Historia clínica</Button>
               </td>
             </tr>
           ))}
@@ -208,16 +267,36 @@ function PatientList() {
               <p><b>Nombre:</b> {detallePaciente.Nombre}</p>
               <p><b>Apellido:</b> {detallePaciente.Apellido}</p>
               <p><b>DNI:</b> {detallePaciente.DNI}</p>
-              {/* Aquí puedes agregar más datos a futuro */}
               <hr />
-              <h5>Odontograma (editable)</h5>
-              <OdontogramaEditor odontograma={odoDetalle} onChange={setOdoDetalle} />
+              <h5>Odontograma</h5>
+              <Odontograma odontograma={detallePaciente.odontograma || {}} readOnly />
+              <hr />
+              <h5>Historia clínica</h5>
+              <Form.Group className="mb-3" style={{display:'flex', gap:8}}>
+                <Form.Label>Filtrar por fecha:</Form.Label>
+                <Form.Control type="date" value={filtroInicio} onChange={e => setFiltroInicio(e.target.value)} />
+                <span>a</span>
+                <Form.Control type="date" value={filtroFin} onChange={e => setFiltroFin(e.target.value)} />
+              </Form.Group>
+              <ul style={{maxHeight:200, overflowY:'auto', paddingLeft:18}}>
+                {(detallePaciente?.historialClinico || [])
+                  .filter(i => {
+                    if (filtroInicio && i.fecha < filtroInicio) return false;
+                    if (filtroFin && i.fecha > filtroFin) return false;
+                    return true;
+                  })
+                  .map((i, idx) => (
+                    <li key={idx}><b>{i.fecha}:</b> {i.texto}</li>
+                  ))}
+                {(!detallePaciente?.historialClinico || detallePaciente.historialClinico.length === 0) && (
+                  <li style={{color:'#888'}}>Sin intervenciones registradas.</li>
+                )}
+              </ul>
             </div>
           )}
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowDetalle(false)}>Cerrar</Button>
-          <Button variant="primary" onClick={handleOdoDetalleSave}>Guardar cambios</Button>
         </Modal.Footer>
       </Modal>
 
@@ -248,21 +327,57 @@ function PatientList() {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal para odontograma (estructura básica) */}
+      {/* Modal para odontograma interactivo */}
       <Modal show={showOdo} onHide={() => setShowOdo(false)} size="lg">
         <Modal.Header closeButton>
           <Modal.Title>Odontograma de {pacienteActual?.Nombre} {pacienteActual?.Apellido}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <OdontogramaEditor odontograma={odoData} onChange={setOdoData} />
+          <Odontograma odontograma={odoData} onChange={setOdoData} />
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowOdo(false)}>Cancelar</Button>
           <Button variant="primary" onClick={handleOdoSave}>Guardar</Button>
         </Modal.Footer>
       </Modal>
-    </Container>
 
+      {/* Modal para historia clínica */}
+      <Modal show={showHistoria} onHide={() => setShowHistoria(false)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Historia clínica de {historiaPaciente?.Nombre} {historiaPaciente?.Apellido}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form.Group className="mb-3">
+            <Form.Label>Agregar intervención</Form.Label>
+            <Form.Control
+              as="textarea"
+              rows={2}
+              value={nuevaIntervencion}
+              onChange={e => setNuevaIntervencion(e.target.value)}
+              placeholder="Describa la intervención o medicación..."
+            />
+            <Button className="mt-2" variant="success" onClick={handleAgregarIntervencion}>Agregar</Button>
+          </Form.Group>
+          <hr />
+          <div>
+            <b>Intervenciones recientes:</b>
+            <ul style={{maxHeight:300, overflowY:'auto', paddingLeft:18}}>
+              {(historiaPaciente?.historialClinico || []).map((i, idx) => (
+                <li key={idx}>
+                  <b>{i.fecha}:</b> {i.texto}
+                </li>
+              ))}
+              {(!historiaPaciente?.historialClinico || historiaPaciente.historialClinico.length === 0) && (
+                <li style={{color:'#888'}}>Sin intervenciones registradas.</li>
+              )}
+            </ul>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowHistoria(false)}>Cerrar</Button>
+        </Modal.Footer>
+      </Modal>
+    </Container>
   );
 }
 
